@@ -1,13 +1,14 @@
 var inputs = [];
-var activeInput;
+var activeInput = -1;
 
 var dummyInput;
+var canvas;
 
 function createDummyInput(){
     dummyInput = document.createElement("INPUT");
     dummyInput.id = "dummyInput";
     //document.getElementsByTagName("body")[0].appendChild(dummyInput);
-    var canvas = document.getElementById("gm4html5_div_id");
+    canvas = document.getElementById("gm4html5_div_id");
     canvas.insertBefore(dummyInput, canvas.childNodes[0]);
     //canvas.appendChild(dummyInput);
     dummyInput.setAttribute("type", "text");
@@ -24,6 +25,17 @@ function createDummyInput(){
         });
     }
 
+    /*dummyInput.on('keyup', function (e) {
+        if (e.key === 'Enter' || e.keyCode === 13) {
+
+            if (activeInput == "username"){
+                selectInput("password");
+            }else{
+                gml_Script_gmcallback_switchFocus(-1, -1, false);
+            }
+        }
+    });*/
+
     dummyInput.onblur = function(){
         dummyInput.setAttribute("style", "display: none");
         inputs.forEach(function(input){
@@ -32,6 +44,9 @@ function createDummyInput(){
             }
         })
         activeInput = -1;
+        canvas.focus();
+        var event = new Event('onmousemove');
+        canvas.dispatchEvent(event);
         gml_Script_gmcallback_switchFocus(-1, -1, true);
     }
 
@@ -56,6 +71,11 @@ function selectInput(name){
             dummyInput.setAttribute("style", "position:absolute;left:"+50+"%;top:"+50+"%;width:"+1+"px;height:"+1+"px;transform: translate(-50%, -50%);")
         };
     });
+
+}
+
+function getSelectedInput(){
+    return activeInput;
 }
 
 function removeInput(name){

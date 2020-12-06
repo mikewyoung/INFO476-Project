@@ -1,3 +1,7 @@
+// Configuration file
+// Note that all of the configuration variables can be changes on launch via environmental variables, so that way github commits don't have passwords stored in them
+const config = require("./config.js");
+
 const express = require("express");
 const bcrypt = require("bcrypt");
 const mysql = require("mysql");
@@ -7,9 +11,12 @@ const { v4: uuidv4 } = require('uuid');
 const inputform = require("./inputform");
 var app = express();
 
-// Configuration file
-// Note that all of the configuration variables can be changes on launch via environmental variables, so that way github commits don't have passwords stored in them
-const config = require("./config.js");
+// Enable cross-origin requests
+app.use(function(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "http://127.0.0.1"); // update to match the domain you will make the request from
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+});
 
 // Initiate the MySQL DB connection
 var con = mysql.createConnection({
@@ -31,9 +38,7 @@ var expireTokens = setInterval(function(){
 
         // Remove the auth token after the time ticks down to zero.
         if (authToken.timeLeft < 0){
-            console.log(authTokens);
             authTokens.splice(authTokens.indexOf(authToken), 1);
-            console.log(authTokens);
         }
     })
 }, 1000);
@@ -74,7 +79,7 @@ function startServer(){
                 // The result of a MySQL query in NodeJS is an array. An array with a length of zero means nothing was found.
                 if(result.length == 0){
                     console.log("No user found: " + username);
-                    res.send(401); // Send an unauthorized HTTP response code
+                    res.sendStatus(401); // Send an unauthorized HTTP response code
                 }else{
                     var hashed_pass = result[0].user_pass; // Keys of the DB are stored as properties of a json object, so the property "user_pass" of the first key is the hashed password to compare.
                     var pid = result[0].ID;
@@ -88,12 +93,31 @@ function startServer(){
                         if (result == true){
                             console.log(username + " authenticated successfully.");
                             var token = uuidv4();
-                            res.send({t: token, id: pid});
+                            var serverList = [];
+                            var serverIPs = [];
+                            var serverPlayers = [];
+                            var serverRegions = [];
+                            var serverMaxPlayers = [];
+
+                            gameServers.forEach(function(gameServer){
+                                serverList.push(gameServer.name);
+                                serverIPs.push(gameServer.ip + ":" + gameServer.port);
+                                serverPlayers.push(gameServer.players.length);
+                                serverRegions.push(gameServer.region);
+                                serverMaxPlayers.push(gameServer.max_players);
+                            })
+
+                            authTokens.forEach(function(authToken){
+                                if (authToken.id == pid){
+                                    authTokens.splice(authTokens.indexOf(authToken), 1);
+                                }
+                            });
+
+                            res.send(JSON.stringify({t: token, servers: JSON.stringify(serverList), ips: JSON.stringify(serverIPs), max_players: JSON.stringify(serverMaxPlayers), players: JSON.stringify(serverPlayers), regions: JSON.stringify(serverRegions)}));
                             authTokens.push({id: pid, token: token, timeLeft: 120});
                         }else{
                             console.log("Wrong password tried for " + username);
-                            res.send(401);
-
+                            res.sendStatus(401);
                         }
                     })
 
@@ -110,7 +134,7 @@ function startServer(){
         inputform.startForm();
         var auth_token = inputform.readString(req.query["auth_token"]);
 
-        if (auth_token != config.auth_token){
+        if (auth_token != config.auth_token || inputform.hasErrors() == true){
             res.sendStatus(404);
             return;
         }
@@ -119,7 +143,7 @@ function startServer(){
         var ip = req.connection.remoteAddress;
 
         // Some IPs start with ::ffff:, so this will remove them.
-        ip.replace("::ffff:", "");
+        ip = ip.replace("::ffff:", "");
 
         var newGameServer = {name: data.name, ip: ip, port: data.port, region: data.region, max_players: data.max_players, players: []};
 
@@ -128,30 +152,39 @@ function startServer(){
 
         // Send an OK status code
         res.sendStatus(200);
-
-
+        console.log(newGameServer.name + " is now online.");
     })
 
     // Post request for the game server
     app.post("/checkTempToken", function(req, res){
         inputform.startForm();
-        var auth_token = inputform.readString(req.query["auth_token"]);
-        var id = inputform.readNumber(req.query["id"]);
+        var auth_token = inputform.readString(req.query["t"]);
+        console.log(auth_token);
+
+        if (inputform.hasErrors() == true){
+            res.sendStatus(401);
+            return;
+        }
+
         var foundToken = false; // Placeholder variable for the following loop
+        var foundId;
 
         authTokens.forEach(function(authToken){
-            if (authToken.id == id){
-                if (auth_token == token){
-                    // In JS, there is no way to break or return during a forEach loop, so this will just set a flag variable to alert the token matches a valid one in the authTokens array.
-                    foundToken = true;
-                    authTokens.splice(authTokens.indexOf(authToken), 1);
-                }
+            console.log(authToken.token);
+            console.log(auth_token);
+            if (authToken.token == auth_token){
+                foundToken = true;
+                foundId = authToken.id;
+                authTokens.splice(authTokens.indexOf(authToken), 1);
+                
             }            
         })
 
         if (foundToken == true){
-            res.sendStatus(200);
+            console.log(foundId + " authed successfully.");
+            res.status(200).json({id: foundId});
         }else{
+            console.log("Unsuccessful auth");
             res.sendStatus(401);
         }
 
